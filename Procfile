@@ -1,1 +1,1 @@
-hubot: bin/hubot -a slack
+hubot: bin/hubot --adapter slack
