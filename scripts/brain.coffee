@@ -2,11 +2,16 @@ myToken = process.env.HUBOT_SLACK_TOKEN
 https = require('https')
 
 module.exports = (robot) ->
+  myUsers=null
+  getUsers = () ->
+    robot.http("https://slack.com/api/users.list?token=#{myToken}").get() (err, resp, body) ->
+      myUsers = JSON.parse body
+
+  getUsers()
 
   dmUser = (username, myMessage, errRes) ->
-      robot.http("https://slack.com/api/users.list?token=#{myToken}").get() (err, resp, body) ->
-        data = JSON.parse body
-        if data.ok is true
+        data = myUsers
+        if data.ok
           lookingFor = true
           for member in data.members
             if member.name is username
