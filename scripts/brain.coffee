@@ -4,8 +4,8 @@ cronJob = require('cron').CronJob
 
 module.exports = (robot) ->
   switchBoard = new Conversation(robot)
-
   myUsers=null
+
   getUsers = () ->
     robot.http("https://slack.com/api/users.list?token=#{myToken}").get() (err, resp, body) ->
       myUsers = JSON.parse body
@@ -13,6 +13,10 @@ module.exports = (robot) ->
   getUsers()
 
   dmUser = (username, myMessage) ->
+        dmRoom = robot.brain.get(username)
+        if dmRoom?
+          robot.messageRoom dmRoom, myMessage
+          return
         data = myUsers
         if data.ok
           lookingFor = true
@@ -26,14 +30,15 @@ module.exports = (robot) ->
                     for dm in dms.ims
                       if dm.user is lookingFor
                         looking = false
-                        robot.messageRoom "#{dm.id}", "#{myMessage}"
                         robot.brain.set username, dm.id
+                        robot.messageRoom dm.id, myMessage
+
                     if looking is true
                       robot.http("https://slack.com/api/im.open?token=#{myToken}&user=#{lookingFor}").get() (err, resp, body) ->
                         newChannel = JSON.parse body
                         if newChannel.ok is true
-                          robot.messageRoom "#{newChannel.channel.id}", "#{myMessage}"
                           robot.brain.set username, newChannel.channel.id
+                          robot.messageRoom newChannel.channel.id, myMessage
                         else
                           return
                   else
@@ -44,6 +49,10 @@ module.exports = (robot) ->
         else
           return
   #-------------------end dmUser-----------------------------------------------#
+
+  dmUserAsFunction = (user,msg) ->
+    return () ->
+      dmUser(user, msg)
 
   robot.respond /message @(.*?) (.*)/i, (res) ->
     username = res.match[1]
@@ -56,12 +65,22 @@ module.exports = (robot) ->
        doStandup()
 
   doStandup = () ->
+    count = 0
     for member in myUsers.members
-      dmUser member.name, "*Are you up yet?* (respond)"
-      robot.brain.set member.name + " SU", true
-
+      if robot.brain.get("#{member.name} V") isnt true
+        setTimeout dmUserAsFunction(member.name, "*Are you up yet?* (respond)"), 5*1000 * count
+        robot.brain.set member.name + " SU", true
+        count = count + 1
 
   new cronJob('1 * * * * 1-5', checkShouldStandup, null, true)
+
+  robot.respond /off/i, (res) ->
+    res.reply "Enjoy your vacation!"
+    robot.brain.set "#{res.message.user.name} V", true
+
+  robot.respond /back/i, (res) ->
+    res.reply "Welcome back!"
+    robot.brain.set "#{res.message.user.name} V", false
 
   robot.respond /.*/i, (res) ->
     if robot.brain.get("#{res.message.user.name} SU") is true
